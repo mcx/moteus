@@ -230,6 +230,9 @@ struct Application {
     // speed changes in these traces.
     std::vector<double> truth_count(data_.size(), 0.0);
     std::vector<size_t> falls;  // sample indices of falling edges
+    // Every single-line edge, with whether the physical line rose
+    // (the late-registered type) -- for the edge-locked ripple metric.
+    std::vector<std::pair<size_t, bool>> edges;
     {
       int prev_sector = kRawToSector[data_[0].raw_value & 0x7];
       // Seed the accumulator the way the firmware seeds offset_value
@@ -255,9 +258,12 @@ struct Application {
         // A single hall line transitioning high -> low is a falling
         // edge.
         const uint32_t changed = prev_raw ^ cur_raw;
-        if (changed != 0 && (changed & (changed - 1)) == 0 &&
-            (prev_raw & changed) != 0) {
-          falls.push_back(i);
+        if (changed != 0 && (changed & (changed - 1)) == 0) {
+          const bool rising = (cur_raw & changed) != 0;
+          edges.emplace_back(i, rising);
+          if (!rising) {
+            falls.push_back(i);
+          }
         }
       }
     }
@@ -345,34 +351,49 @@ struct Application {
     // estimate averaged synchronously with the hall pattern should be
     // flat: any deterministic structure is an estimator artifact.
     // Over the same flat-speed windows used for the bias metric below,
-    // resample the normalized velocity error onto a fixed number of
-    // phase bins spanning consecutive falling-edge brackets (the same
-    // bracket the ground-truth oracle interpolates across, covering
-    // one rising and one falling edge), and average across brackets.
-    // Averaging cancels aperiodic noise while any edge-synchronous
-    // structure survives.  The metric is the peak-to-peak amplitude of
-    // that mean waveform as a percentage of true speed.
+    // resample the normalized velocity error of every hall sector
+    // onto a fixed number of phase bins and average across sectors.
+    // Sectors are averaged in two classes by the physical direction
+    // of the edge that ends them -- a rising line (the late,
+    // pull-up-limited type) or a falling one (sharp, on time) -- and
+    // the two class waveforms are concatenated.  Averaging cancels
+    // aperiodic noise and the per-sector placement spread (a wide
+    // sector reads slow, a narrow one fast, but across all sectors
+    // of a class those offsets cancel), while any edge-synchronous
+    // structure survives.  The metric is the peak-to-peak amplitude
+    // of that mean waveform as a percentage of true speed.
     //
-    // This makes no assumption about where in the interval an
-    // artifact lives or what sign it has: it catches an
-    // end-of-sector anti-overrun decay, per-edge rise/fall
-    // alternation, edge overshoot, or any future edge-synchronous
-    // ripple equally.  Such structure is nearly invisible to the
-    // sum-of-squares velocity_metric (it is small relative to
-    // acceleration transients), but is a direct, periodic excitation
-    // of any velocity-feedback (kd) term at a multiple of the hall
-    // edge rate.
+    // Classifying by the physical edge direction, rather than
+    // bracketing between consecutive falling edges, keeps the
+    // brackets uniform (one sector each) for any sensor polarity.
+    // With an inverted line the falling edges are no longer evenly
+    // spaced in counts, so brackets between them would mix one- and
+    // four-sector spans and both smear real structure and invent
+    // spurious structure.  With the default polarity the two classes
+    // strictly alternate and this is the same waveform the previous
+    // falling-edge bracket produced.
+    //
+    // This makes no assumption about where in the sector an artifact
+    // lives or what sign it has: it catches an end-of-sector
+    // anti-overrun decay, per-edge rise/fall alternation (which lands
+    // with opposite sign in the two classes), edge overshoot, or any
+    // future edge-synchronous ripple equally.  Such structure is
+    // nearly invisible to the sum-of-squares velocity_metric (it is
+    // small relative to acceleration transients), but is a direct,
+    // periodic excitation of any velocity-feedback (kd) term at a
+    // multiple of the hall edge rate.
     double edge_ripple_pct = 0.0;
     {
       const size_t kWindow =
           static_cast<size_t>(0.1 * options.rate_hz);  // 0.1 s
       constexpr double kMinSpeed = 50.0;   // counts/s; skip near-stop
       constexpr double kFlatness = 0.05;   // max (vmax-vmin)/|mean speed|
-      constexpr size_t kBins = 20;
+      constexpr size_t kSectorBins = 10;
+      constexpr size_t kBins = 2 * kSectorBins;
       std::array<double, kBins> bin_sum = {};
       std::array<size_t, kBins> bin_count = {};
 
-      size_t next_fall = 0;
+      size_t next_edge = 0;
       for (size_t i = 0; i + kWindow <= data_.size(); i += kWindow) {
         double sum_truth = 0.0;
         double vmin = std::abs(data_[i].truth_velocity);
@@ -389,19 +410,20 @@ struct Application {
         if (abs_mean_truth < kMinSpeed) { continue; }
         if ((vmax - vmin) / abs_mean_truth > kFlatness) { continue; }
 
-        // Accumulate every falling-edge bracket wholly within this
-        // window.
-        while (next_fall + 1 < falls.size() && falls[next_fall] < i) {
-          next_fall++;
+        // Accumulate every sector wholly within this window.
+        while (next_edge + 1 < edges.size() && edges[next_edge].first < i) {
+          next_edge++;
         }
-        for (size_t f = next_fall;
-             f + 1 < falls.size() && falls[f + 1] < i + kWindow;
+        for (size_t f = next_edge;
+             f + 1 < edges.size() && edges[f + 1].first < i + kWindow;
              f++) {
-          const size_t b0 = falls[f];
-          const size_t b1 = falls[f + 1];
-          if (b1 - b0 < 2 * kBins) { continue; }
+          const size_t b0 = edges[f].first;
+          const size_t b1 = edges[f + 1].first;
+          if (b1 - b0 < 2 * kSectorBins) { continue; }
+          const size_t klass = edges[f + 1].second ? 0 : 1;
           for (size_t k = b0; k < b1; k++) {
-            const size_t bin = ((k - b0) * kBins) / (b1 - b0);
+            const size_t bin =
+                klass * kSectorBins + ((k - b0) * kSectorBins) / (b1 - b0);
             const double err =
                 (data_[k].velocity - data_[k].truth_velocity) /
                 abs_mean_truth;

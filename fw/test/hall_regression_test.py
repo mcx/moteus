@@ -45,12 +45,19 @@ import tempfile
 #
 # ripple% is the edge-locked velocity ripple over the same flat-speed
 # windows (one-sided; 0.3% floor): the peak-to-peak amplitude of the
-# velocity error averaged synchronously onto phase bins spanning
-# falling-edge brackets, as a percentage of true speed.  At constant
-# speed that mean waveform should be flat; any deterministic
-# edge-synchronous structure -- an anti-overrun decay firing before
-# the next edge is actually late, per-edge rise/fall alternation, edge
-# overshoot -- survives the averaging while noise cancels.  Such
+# velocity error averaged synchronously onto phase bins spanning one
+# hall sector, with sectors averaged in two classes by the physical
+# direction of the edge that ends them (rising = the late, pull-up
+# limited type; falling = sharp, on time) and the two class waveforms
+# concatenated, as a percentage of true speed.  Classifying by the
+# physical edge direction keeps the metric valid for any hall
+# polarity setting; with the default polarity the classes alternate
+# and this is the same waveform as a falling-edge-to-falling-edge
+# bracket.  At constant speed that mean waveform should be flat; any
+# deterministic edge-synchronous structure -- an anti-overrun decay
+# firing before the next edge is actually late, per-edge rise/fall
+# alternation, edge overshoot -- survives the averaging while noise
+# and per-sector placement spread cancel.  Such
 # structure is nearly invisible to the sum-of-squares velocity_metric
 # but directly excites a velocity-feedback (kd) term at a multiple of
 # the hall edge rate.  The anti-overrun decay used to fire
@@ -69,56 +76,56 @@ RATE_OVERRIDES_HZ = {
 }
 
 TESTS = [
-    # test                        PLL   pmetric  pmax   vmetric  vmax    vbias% ripple%
-    ('20250616-speed-cycle',          50,   0.129,   2.4,   430.0,   135.0,  1.0,   0.3),
-    ('20250616-back-and-forth',       50,   0.195,   2.68,  140.0,   82.3,   1.0,   0.453),
-    ('20250616-bnforth-highaccel',    50,   0.11,    2.4,   221.0,   140.0,  1.0,   0.3),
-    ('20250616-hboard-cycle',         50,   0.0586,  1.8,   29.1,    38.6,   1.0,   0.73),
-    ('20250616-hboard-manual',        50,   0.146,   2.4,   19.0,    32.2,   2.0,   0.3),
-    ('20250615-new-slow',             50,   0.294,   2.81,  344.0,   128.0,  1.0,   0.751),
-    ('20260618-spindle-sweep',        50,   0.0285,  1.88,  116.0,   67.0,   1.0,   1.07),
-    ('20260618-spindle-hw',           50,   0.0306,  1.8,   650.0,   141.0,  1.0,   0.48),
-    ('20260715-hboard-n1-1hz',        50,   0.00561, 1.8,   50.3,    117.0,  1.12,  0.316),
+    # test                         PLL   pmetric  pmax   vmetric  vmax    vbias%  ripple%
+    ('20250616-speed-cycle',           50,   0.129,     2.4,   430.0,   135.0,     1.0,     0.3),
+    ('20250616-back-and-forth',        50,   0.195,    2.68,   140.0,    82.3,     1.0,   0.363),
+    ('20250616-bnforth-highaccel',     50,    0.11,     2.4,   221.0,   140.0,     1.0,     0.3),
+    ('20250616-hboard-cycle',          50,  0.0586,     1.8,    29.1,    38.6,     1.0,   0.597),
+    ('20250616-hboard-manual',         50,   0.146,     2.4,    19.0,    32.2,     2.0,   0.413),
+    ('20250615-new-slow',              50,   0.294,    2.81,   344.0,   128.0,     1.0,     0.3),
+    ('20260618-spindle-sweep',         50,  0.0285,    1.88,   116.0,    67.0,     1.0,    1.01),
+    ('20260618-spindle-hw',            50,  0.0306,     1.8,   650.0,   141.0,     1.0,   0.549),
+    ('20260715-hboard-n1-1hz',         50, 0.00561,     1.8,    50.3,   117.0,    1.12,     0.3),
 
-    ('20250616-speed-cycle',         124,   0.129,   2.4,   430.0,   136.0,  1.0,   0.3),
-    ('20250616-back-and-forth',      124,   0.195,   2.68,  141.0,   82.3,   1.0,   0.303),
-    ('20250616-bnforth-highaccel',   124,   0.11,    2.4,   218.0,   140.0,  1.0,   0.336),
-    ('20250616-hboard-cycle',        124,   0.058,   1.8,   43.3,    38.6,   1.0,   0.31),
-    ('20250616-hboard-manual',       124,   0.146,   2.4,   19.0,    32.2,   2.0,   0.3),
-    ('20250615-new-slow',            124,   0.294,   2.81,  344.0,   128.0,  1.0,   0.751),
-    ('20260618-spindle-sweep',       124,   0.0221,  1.88,  175.0,   77.7,   1.0,   2.51),
-    ('20260618-spindle-hw',          124,   0.024,   1.8,   711.0,   148.0,  1.0,   0.86),
-    ('20260715-hboard-n1-1hz',       124,   0.00561, 1.8,   50.3,    117.0,  1.12,  0.316),
+    ('20250616-speed-cycle',          124,   0.129,     2.4,   430.0,   136.0,     1.0,     0.3),
+    ('20250616-back-and-forth',       124,   0.195,    2.68,   141.0,    82.3,     1.0,     0.3),
+    ('20250616-bnforth-highaccel',    124,    0.11,     2.4,   218.0,   140.0,     1.0,     0.3),
+    ('20250616-hboard-cycle',         124,   0.058,     1.8,    43.3,    38.6,     1.0,    1.04),
+    ('20250616-hboard-manual',        124,   0.146,     2.4,    19.0,    32.2,     2.0,   0.413),
+    ('20250615-new-slow',             124,   0.294,    2.81,   344.0,   128.0,     1.0,     0.3),
+    ('20260618-spindle-sweep',        124,  0.0221,    1.88,   175.0,    77.7,     1.0,    2.45),
+    ('20260618-spindle-hw',           124,   0.024,     1.8,   711.0,   148.0,     1.0,   0.792),
+    ('20260715-hboard-n1-1hz',        124, 0.00561,     1.8,    50.3,   117.0,    1.12,     0.3),
 
-    ('20250616-speed-cycle',         248,   0.13,    2.4,   446.0,   143.0,  1.0,   0.3),
-    ('20250616-back-and-forth',      248,   0.195,   2.68,  141.0,   82.3,   1.0,   0.303),
-    ('20250616-bnforth-highaccel',   248,   0.11,    2.4,   218.0,   140.0,  1.0,   0.336),
-    ('20250616-hboard-cycle',        248,   0.058,   1.8,   43.3,    38.6,   1.0,   0.31),
-    ('20250616-hboard-manual',       248,   0.146,   2.4,   19.0,    32.2,   2.0,   0.3),
-    ('20250615-new-slow',            248,   0.294,   2.81,  344.0,   128.0,  1.0,   0.751),
-    ('20260618-spindle-sweep',       248,   0.0247,  1.88,  187.0,   68.6,   1.0,   0.664),
-    ('20260618-spindle-hw',          248,   0.0237,  1.8,   947.0,   169.0,  1.0,   1.36),
-    ('20260715-hboard-n1-1hz',       248,   0.00561, 1.8,   50.3,    117.0,  1.12,  0.316),
+    ('20250616-speed-cycle',          248,    0.13,     2.4,   446.0,   143.0,     1.0,     0.3),
+    ('20250616-back-and-forth',       248,   0.195,    2.68,   141.0,    82.3,     1.0,     0.3),
+    ('20250616-bnforth-highaccel',    248,    0.11,     2.4,   218.0,   140.0,     1.0,     0.3),
+    ('20250616-hboard-cycle',         248,   0.058,     1.8,    43.3,    38.6,     1.0,    1.04),
+    ('20250616-hboard-manual',        248,   0.146,     2.4,    19.0,    32.2,     2.0,   0.413),
+    ('20250615-new-slow',             248,   0.294,    2.81,   344.0,   128.0,     1.0,     0.3),
+    ('20260618-spindle-sweep',        248,  0.0247,    1.88,   187.0,    68.6,     1.0,    1.19),
+    ('20260618-spindle-hw',           248,  0.0237,     1.8,   947.0,   169.0,     1.0,    1.37),
+    ('20260715-hboard-n1-1hz',        248, 0.00561,     1.8,    50.3,   117.0,    1.12,     0.3),
 
-    ('20250616-speed-cycle',         496,   0.129,   2.4,   714.0,   218.0,  1.0,   0.3),
-    ('20250616-back-and-forth',      496,   0.195,   2.68,  141.0,   82.3,   1.0,   0.303),
-    ('20250616-bnforth-highaccel',   496,   0.11,    2.4,   218.0,   140.0,  1.0,   0.336),
-    ('20250616-hboard-cycle',        496,   0.058,   1.8,   43.3,    38.6,   1.0,   0.31),
-    ('20250616-hboard-manual',       496,   0.146,   2.4,   19.0,    32.2,   2.0,   0.3),
-    ('20250615-new-slow',            496,   0.294,   2.81,  344.0,   128.0,  1.0,   0.751),
-    ('20260618-spindle-sweep',       496,   0.0247,  1.88,  187.0,   68.6,   1.0,   0.664),
-    ('20260618-spindle-hw',          496,   0.0269,  1.8,   1340.0,  677.0,  1.0,   0.317),
-    ('20260715-hboard-n1-1hz',       496,   0.00561, 1.8,   50.3,    117.0,  1.12,  0.316),
+    ('20250616-speed-cycle',          496,   0.129,     2.4,   714.0,   218.0,     1.0,     0.3),
+    ('20250616-back-and-forth',       496,   0.195,    2.68,   141.0,    82.3,     1.0,     0.3),
+    ('20250616-bnforth-highaccel',    496,    0.11,     2.4,   218.0,   140.0,     1.0,     0.3),
+    ('20250616-hboard-cycle',         496,   0.058,     1.8,    43.3,    38.6,     1.0,    1.04),
+    ('20250616-hboard-manual',        496,   0.146,     2.4,    19.0,    32.2,     2.0,   0.413),
+    ('20250615-new-slow',             496,   0.294,    2.81,   344.0,   128.0,     1.0,     0.3),
+    ('20260618-spindle-sweep',        496,  0.0247,    1.88,   187.0,    68.6,     1.0,    1.19),
+    ('20260618-spindle-hw',           496,  0.0269,     1.8,  1340.0,   677.0,     1.0,   0.775),
+    ('20260715-hboard-n1-1hz',        496, 0.00561,     1.8,    50.3,   117.0,    1.12,     0.3),
 
-    ('20250616-speed-cycle',         992,   0.129,   2.4,   714.0,   218.0,  1.0,   0.3),
-    ('20250616-back-and-forth',      992,   0.195,   2.68,  141.0,   82.3,   1.0,   0.303),
-    ('20250616-bnforth-highaccel',   992,   0.11,    2.4,   218.0,   140.0,  1.0,   0.336),
-    ('20250616-hboard-cycle',        992,   0.058,   1.8,   43.3,    38.6,   1.0,   0.31),
-    ('20250616-hboard-manual',       992,   0.146,   2.4,   19.0,    32.2,   2.0,   0.3),
-    ('20250615-new-slow',            992,   0.294,   2.81,  344.0,   128.0,  1.0,   0.751),
-    ('20260618-spindle-sweep',       992,   0.0247,  1.88,  187.0,   68.6,   1.0,   0.664),
-    ('20260618-spindle-hw',          992,   0.0276,  1.8,   1220.0,  218.0,  1.0,   0.317),
-    ('20260715-hboard-n1-1hz',       992,   0.00561, 1.8,   50.3,    117.0,  1.12,  0.316),
+    ('20250616-speed-cycle',          992,   0.129,     2.4,   714.0,   218.0,     1.0,     0.3),
+    ('20250616-back-and-forth',       992,   0.195,    2.68,   141.0,    82.3,     1.0,     0.3),
+    ('20250616-bnforth-highaccel',    992,    0.11,     2.4,   218.0,   140.0,     1.0,     0.3),
+    ('20250616-hboard-cycle',         992,   0.058,     1.8,    43.3,    38.6,     1.0,    1.04),
+    ('20250616-hboard-manual',        992,   0.146,     2.4,    19.0,    32.2,     2.0,   0.413),
+    ('20250615-new-slow',             992,   0.294,    2.81,   344.0,   128.0,     1.0,     0.3),
+    ('20260618-spindle-sweep',        992,  0.0247,    1.88,   187.0,    68.6,     1.0,    1.19),
+    ('20260618-spindle-hw',           992,  0.0276,     1.8,  1220.0,   218.0,     1.0,   0.775),
+    ('20260715-hboard-n1-1hz',        992, 0.00561,     1.8,    50.3,   117.0,    1.12,     0.3),
 ]
 
 def main():
