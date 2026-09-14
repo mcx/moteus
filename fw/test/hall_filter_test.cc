@@ -41,6 +41,7 @@ struct Options {
   double pll_filter_hz = 40.0;
   double rate_hz = 30000.0;
   bool no_commutation = false;
+  int hall_polarity = 0;
 
   template <typename Archive>
   void Serialize(Archive* a) {
@@ -49,6 +50,7 @@ struct Options {
     a->Visit(MJ_NVP(pll_filter_hz));
     a->Visit(MJ_NVP(rate_hz));
     a->Visit(MJ_NVP(no_commutation));
+    a->Visit(MJ_NVP(hall_polarity));
   }
 };
 
@@ -185,7 +187,11 @@ struct Application {
       const auto raw_value = raw_encoder[i];
       const auto old = aux1_status.hall.count;
 
-      aux1_status.hall.count = kRawToSector[raw_value & 0x7];
+      // Mirror aux::Hall::ApplyHallReading: bits hold the raw pin
+      // state, the sector is decoded after the polarity XOR.
+      aux1_status.hall.bits = raw_value & 0x7;
+      aux1_status.hall.count =
+          kRawToSector[(raw_value ^ options.hall_polarity) & 0x7];
 
       if (aux1_status.hall.count != old) {
         aux1_status.hall.nonce += 1;
@@ -234,7 +240,8 @@ struct Application {
     // (the late-registered type) -- for the edge-locked ripple metric.
     std::vector<std::pair<size_t, bool>> edges;
     {
-      int prev_sector = kRawToSector[data_[0].raw_value & 0x7];
+      int prev_sector =
+          kRawToSector[(data_[0].raw_value ^ options.hall_polarity) & 0x7];
       // Seed the accumulator the way the firmware seeds offset_value
       // on its first hall sample: as the signed step from an assumed
       // previous count of zero.  Seeding with the raw sector instead
@@ -246,7 +253,7 @@ struct Application {
       for (size_t i = 1; i < data_.size(); i++) {
         const uint32_t prev_raw = data_[i - 1].raw_value & 0x7;
         const uint32_t cur_raw = data_[i].raw_value & 0x7;
-        const int sector = kRawToSector[cur_raw];
+        const int sector = kRawToSector[cur_raw ^ options.hall_polarity];
         // Signed count step resolved modulo six into [-3, 2]; the
         // same convention the firmware uses for its hall delta.  At
         // these sample rates a real step is only -1, 0 or +1.
